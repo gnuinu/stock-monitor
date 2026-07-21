@@ -1,0 +1,15 @@
+# Java / Gradle
+backend/build/
+backend/.gradle/
+*.class
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+frontend/*.tsbuildinfo
