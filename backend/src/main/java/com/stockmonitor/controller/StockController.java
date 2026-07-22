@@ -112,6 +112,8 @@ public class StockController {
         out.put("unchanged", quotes.size() - advancing - declining);
         out.put("topGainers", quotes.stream().sorted(byChange.reversed()).limit(3).toList());
         out.put("topLosers", quotes.stream().sorted(byChange).limit(3).toList());
+        out.put("dataSource", market.dataSource());
+        out.put("fallbackSymbols", market.fallbackSymbols());
         out.put("updatedAt", market.lastTickAt().toString());
         return out;
     }

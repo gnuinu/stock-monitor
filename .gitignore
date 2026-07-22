@@ -13,3 +13,6 @@ frontend/dist/
 *.iml
 .DS_Store
 frontend/*.tsbuildinfo
+
+# stray vite cache
+**/.vite/

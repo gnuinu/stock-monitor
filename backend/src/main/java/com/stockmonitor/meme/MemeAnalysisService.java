@@ -42,6 +42,9 @@ public class MemeAnalysisService {
         verdicts.add(dishwashing(z, close, volume, totalReturn));
         verdicts.add(staircase(close, totalReturn));
         verdicts.add(basement(close, z));
+        verdicts.add(rollercoaster(z));
+        verdicts.add(heavenStairs(close, totalReturn));
+        verdicts.add(crabWalk(close, totalReturn));
         verdicts.add(zen());
 
         verdicts.sort(Comparator.comparingInt(MemeVerdict::score).reversed());
@@ -258,6 +261,67 @@ public class MemeAnalysisService {
                 String.format("최근 구간에서만 신저가를 %d번 갱신하며 지하 탐사를 이어가고 있습니다. "
                         + "'바닥 밑에 지하실, 지하실 밑에 맨틀'이라는 격언이 실시간으로 증명되는 중입니다.", newLows),
                 "지하에서는 랜턴(분할 매수 계획) 없이 움직이지 마세요. 맨틀은 생각보다 뜨겁습니다.");
+    }
+
+    /** 롤러코스터 차트: 큰 폭으로 오르내리기를 반복. */
+    private MemeVerdict rollercoaster(double[] z) {
+        double amp = range(z, 0, z.length);
+        double choppiness = 1 - smoothness(z);
+        int bigSwings = 0;
+        for (int i = 1; i < z.length; i++) {
+            if (Math.abs(z[i] - z[i - 1]) > 0.08) {
+                bigSwings++;
+            }
+        }
+        double score = clamp01(amp / 0.7) * 40 + choppiness * 35 + clamp01(bigSwings / 8.0) * 25;
+        return new MemeVerdict("rollercoaster", "롤러코스터 차트", "🎢",
+                (int) score,
+                "두 손 들고 타세요! 안전바 확인하셨죠?",
+                String.format("큰 폭의 상승과 하락이 %d번이나 반복됐습니다. 방향성은 없지만 스릴 하나는 최고입니다. "
+                        + "심장약한 분들은 계좌를 보지 않는 것이 정신건강에 이롭습니다.", bigSwings),
+                "롤러코스터는 결국 출발점으로 돌아옵니다. 타는 값(수수료)만 계속 나갑니다.");
+    }
+
+    /** 천국의 계단 차트: 급등과 횡보를 반복하며 한 계단씩 상승. */
+    private MemeVerdict heavenStairs(double[] close, double totalReturn) {
+        int bigJumps = 0;
+        int calmDays = 0;
+        for (int i = 1; i < close.length; i++) {
+            double ret = (close[i] - close[i - 1]) / close[i - 1] * 100;
+            if (ret > 3) bigJumps++;
+            if (Math.abs(ret) < 1) calmDays++;
+        }
+        double score = 0;
+        if (totalReturn > 5 && bigJumps >= 3) {
+            score = clamp01(bigJumps / 6.0) * 50 + clamp01(calmDays / (close.length * 0.6)) * 30
+                    + clamp01(totalReturn / 25) * 20;
+        }
+        return new MemeVerdict("heaven-stairs", "천국의 계단 차트", "😇",
+                (int) score,
+                "한 층씩 착실히 올라가는 중입니다. 엘리베이터보다 안전합니다.",
+                String.format("%d번의 급등 계단과 그 사이 횡보 층계참으로 이뤄진 아름다운 상승 계단입니다. "
+                        + "'무릎에 사서 어깨에 판다'는 격언이 실현되는, 몇 안 되는 행복한 차트입니다.", bigJumps),
+                "천국의 계단에도 끝은 있습니다. 옥상에서 뛰어내리지 않도록 익절 라인을 정해두세요.");
+    }
+
+    /** 게걸음 차트: 방향 없이 옆으로만 왔다갔다. */
+    private MemeVerdict crabWalk(double[] close, double totalReturn) {
+        int activeDays = 0;
+        for (int i = 1; i < close.length; i++) {
+            double ret = (close[i] - close[i - 1]) / close[i - 1] * 100;
+            if (Math.abs(ret) > 1) activeDays++;
+        }
+        double score = 0;
+        if (Math.abs(totalReturn) < 6) {
+            score = clamp01((6 - Math.abs(totalReturn)) / 6) * 45
+                    + clamp01(activeDays / (close.length * 0.5)) * 35 + 20;
+        }
+        return new MemeVerdict("crab-walk", "게걸음 차트", "🦀",
+                (int) score,
+                "옆으로, 옆으로. 게 한 마리가 지나갑니다.",
+                String.format("오르락내리락은 하지만 %d일 누적 수익률은 %+.1f%%로 제자리걸음입니다. "
+                        + "위로도 아래로도 안 가고 옆으로만 기어가는 전형적인 횡보장입니다.", close.length, totalReturn),
+                "게걸음장에서는 매매 횟수만 늘고 수수료만 쌓입니다. 때론 손 놓고 기다리는 게 실력입니다.");
     }
 
     /** fallback: 아무 패턴도 아님. */
