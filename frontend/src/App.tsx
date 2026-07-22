@@ -1,6 +1,7 @@
-import { Link, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Route, Routes } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import StockDetail from './pages/StockDetail';
+import Portfolio from './pages/Portfolio';
 
 export default function App() {
   return (
@@ -9,7 +10,14 @@ export default function App() {
         <Link to="/">
           <h1>📈 주식 모니터</h1>
         </Link>
-        <span className="tagline">기술적 지표 + 병맛 차트 분석</span>
+        <nav className="main-nav">
+          <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
+            대시보드
+          </NavLink>
+          <NavLink to="/portfolio" className={({ isActive }) => (isActive ? 'active' : '')}>
+            모의투자
+          </NavLink>
+        </nav>
         <span className="live">
           <span className="live-dot" /> 자동 갱신
         </span>
@@ -17,6 +25,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/stock/:symbol" element={<StockDetail />} />
+        <Route path="/portfolio" element={<Portfolio />} />
       </Routes>
     </div>
   );

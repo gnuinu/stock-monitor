@@ -94,12 +94,50 @@ export interface MarketSummary {
   updatedAt: string;
 }
 
+export interface Holding {
+  symbol: string;
+  name: string;
+  market: string;
+  quantity: number;
+  avgPrice: number;
+  currentPrice: number;
+  value: number;
+  pnl: number;
+  pnlPercent: number;
+}
+
+export interface Portfolio {
+  cash: number;
+  holdingsValue: number;
+  totalValue: number;
+  unrealizedPnl: number;
+  realizedPnl: number;
+  totalPnl: number;
+  totalPnlPercent: number;
+  initialCash: number;
+  holdings: Holding[];
+  usdKrw: number;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) {
     throw new Error(`API ${path} failed: ${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+async function post<T>(path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error ?? `API ${path} failed: ${res.status}`);
+  }
+  return data as T;
 }
 
 export const api = {
@@ -110,7 +148,15 @@ export const api = {
   signals: (symbol: string) => get<SignalReport>(`/stocks/${symbol}/signals`),
   meme: (symbol: string) => get<MemeReport>(`/stocks/${symbol}/meme`),
   marketSummary: () => get<MarketSummary>('/market/summary'),
+  portfolio: () => get<Portfolio>('/portfolio'),
+  order: (symbol: string, side: 'BUY' | 'SELL', quantity: number) =>
+    post<{ portfolio: Portfolio }>('/portfolio/orders', { symbol, side, quantity }),
+  resetPortfolio: () => post<Portfolio>('/portfolio/reset'),
 };
+
+export function formatKrw(v: number): string {
+  return `${Math.round(v).toLocaleString('ko-KR')}원`;
+}
 
 export function formatPrice(q: { price: number; market: string }): string {
   if (q.market === 'NASDAQ') {

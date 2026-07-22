@@ -13,6 +13,7 @@ import {
 import StockCharts from '../components/StockCharts';
 import SignalPanel from '../components/SignalPanel';
 import MemePanel from '../components/MemePanel';
+import TradeWidget from '../components/TradeWidget';
 
 const RANGES = [
   { label: '3개월', days: 63 },
@@ -125,6 +126,7 @@ export default function StockDetail() {
           <div className="loading">차트를 불러오는 중...</div>
         )}
         <div className="side-stack">
+          <TradeWidget quote={quote} />
           {signals && <SignalPanel report={signals} />}
           {meme && <MemePanel report={meme} />}
         </div>
