@@ -13,29 +13,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
- * When the KIS provider is selected but no credentials are configured, the app
+ * When the Yahoo provider is selected but the endpoint is unreachable, the app
  * must still start and serve data by falling back to the simulator per symbol.
- * (Live KIS calls can't be exercised in CI, so this guards the wiring + fallback
- * contract, which is the part that would otherwise break silently.)
+ * The base URL is pointed at a dead port so history() fails fast (connection
+ * refused) — this guards the wiring + fallback contract without real network.
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-        "stockmonitor.market.provider=kis",
-        "stockmonitor.kis.app-key=",
-        "stockmonitor.kis.app-secret="
+        "stockmonitor.market.provider=yahoo",
+        "stockmonitor.yahoo.base-url=http://localhost:1"
 })
-class KisFallbackTest {
+class YahooFallbackTest {
 
     @Autowired
     MarketDataService market;
 
     @Test
-    void reportsKisAsSelectedProvider() {
-        assertEquals("kis", market.dataSource());
+    void reportsYahooAsSelectedProvider() {
+        assertEquals("yahoo", market.dataSource());
     }
 
     @Test
-    void allSymbolsFallBackToSimulatorWithoutCredentials() {
+    void allSymbolsFallBackToSimulatorWhenUnreachable() {
         assertEquals(market.universe().size(), market.fallbackSymbols().size());
     }
 

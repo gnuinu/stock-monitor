@@ -23,14 +23,18 @@ function signed(v: number): string {
   return `${v > 0 ? '+' : ''}${v.toFixed(2)}`;
 }
 
+const SOURCE_LABELS: Record<string, string> = {
+  yahoo: 'Yahoo Finance 실시간',
+};
+
 function DataSourceBadge({ summary }: { summary: MarketSummary }) {
-  // KIS with no symbols on fallback = fully live; any fallback or simulated = not live.
-  const live = summary.dataSource === 'kis' && summary.fallbackSymbols.length === 0;
-  const partial = summary.dataSource === 'kis' && summary.fallbackSymbols.length > 0;
-  if (live) {
-    return <span className="source-badge live">한국투자증권 실시간</span>;
+  // A real provider with no symbols on fallback = fully live; any fallback or simulated = not live.
+  const isReal = summary.dataSource !== 'simulated';
+  const label = SOURCE_LABELS[summary.dataSource] ?? `${summary.dataSource} 실시간`;
+  if (isReal && summary.fallbackSymbols.length === 0) {
+    return <span className="source-badge live">{label}</span>;
   }
-  if (partial) {
+  if (isReal && summary.fallbackSymbols.length > 0) {
     const n = summary.fallbackSymbols.length;
     return (
       <span className="source-badge partial" title={`시뮬레이션 대체: ${summary.fallbackSymbols.join(', ')}`}>
