@@ -11,7 +11,7 @@ export default function App() {
         </Link>
         <span className="tagline">기술적 지표 + 병맛 차트 분석</span>
         <span className="live">
-          <span className="live-dot" /> 실시간 시뮬레이션
+          <span className="live-dot" /> 자동 갱신
         </span>
       </header>
       <Routes>

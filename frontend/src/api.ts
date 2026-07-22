@@ -89,6 +89,8 @@ export interface MarketSummary {
   unchanged: number;
   topGainers: Quote[];
   topLosers: Quote[];
+  dataSource: string;
+  fallbackSymbols: string[];
   updatedAt: string;
 }
 

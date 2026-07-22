@@ -3,29 +3,30 @@ package com.stockmonitor.market;
 import com.stockmonitor.model.Candle;
 import com.stockmonitor.model.StockMeta;
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.DayOfWeek;
 import java.time.Instant;
-import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Built-in market data simulator. Generates a deterministic (per-symbol seeded)
- * daily OHLCV history and mutates the latest candle every few seconds to
- * emulate a live feed. Swap this service for a real data provider
- * (KIS, Yahoo Finance, Alpha Vantage, ...) without touching the API layer.
+ * Facade over the active {@link MarketDataProvider}. Owns the symbol universe,
+ * the candle cache and the refresh schedule, and guarantees the app always has
+ * data: if the real provider fails to load a symbol, that symbol falls back to
+ * the built-in simulator. The REST layer depends only on this class, so the
+ * data source can be swapped purely by configuration.
  */
 @Service
 public class MarketDataService {
 
-    private static final int HISTORY_DAYS = 420;
+    private static final Logger log = LoggerFactory.getLogger(MarketDataService.class);
 
     private static final List<StockMeta> UNIVERSE = List.of(
             new StockMeta("005930", "삼성전자", "KOSPI", "반도체", 71000, 12_000_000),
@@ -45,18 +46,54 @@ public class MarketDataService {
             new StockMeta("PLTR", "Palantir", "NASDAQ", "Software", 80, 60_000_000)
     );
 
+    private final MarketDataProvider provider;
+    private final SimulatedMarketDataProvider simulator;
     private final Map<String, StockMeta> metaBySymbol = new LinkedHashMap<>();
     private final Map<String, List<Candle>> candlesBySymbol = new ConcurrentHashMap<>();
-    private final Map<String, Random> liveRandom = new ConcurrentHashMap<>();
+    private final Set<String> fallbackSymbols = ConcurrentHashMap.newKeySet();
     private volatile Instant lastTickAt = Instant.now();
+
+    public MarketDataService(@Value("${stockmonitor.market.provider:simulated}") String providerName,
+                             List<MarketDataProvider> providers,
+                             SimulatedMarketDataProvider simulator) {
+        this.simulator = simulator;
+        this.provider = providers.stream()
+                .filter(p -> p.name().equalsIgnoreCase(providerName))
+                .findFirst()
+                .orElseGet(() -> {
+                    log.warn("Unknown market provider '{}'; falling back to simulator", providerName);
+                    return simulator;
+                });
+    }
 
     @PostConstruct
     void init() {
+        log.info("Market data provider: {}", provider.name());
         for (StockMeta meta : UNIVERSE) {
             metaBySymbol.put(meta.symbol(), meta);
-            candlesBySymbol.put(meta.symbol(), generateHistory(meta));
-            liveRandom.put(meta.symbol(), new Random(meta.symbol().hashCode() * 31L + 7));
+            candlesBySymbol.put(meta.symbol(), loadWithFallback(meta));
         }
+        if (!fallbackSymbols.isEmpty()) {
+            log.warn("{} symbol(s) using simulated fallback: {}", fallbackSymbols.size(), fallbackSymbols);
+        }
+    }
+
+    private List<Candle> loadWithFallback(StockMeta meta) {
+        if (provider != simulator) {
+            try {
+                List<Candle> history = provider.history(meta);
+                if (history != null && !history.isEmpty()) {
+                    fallbackSymbols.remove(meta.symbol());
+                    return history;
+                }
+                log.warn("Provider '{}' returned no data for {}; using simulator", provider.name(), meta.symbol());
+            } catch (Exception e) {
+                log.warn("Provider '{}' failed for {} ({}); using simulator",
+                        provider.name(), meta.symbol(), e.getMessage());
+            }
+            fallbackSymbols.add(meta.symbol());
+        }
+        return simulator.history(meta);
     }
 
     public List<StockMeta> universe() {
@@ -89,72 +126,32 @@ public class MarketDataService {
         return lastTickAt;
     }
 
-    /** Emulated live feed: nudge the latest candle every 3 seconds. */
-    @Scheduled(fixedRate = 3000, initialDelay = 3000)
-    void liveTick() {
+    public String dataSource() {
+        return provider.name();
+    }
+
+    /** Symbols currently served by the simulator instead of the real provider. */
+    public Set<String> fallbackSymbols() {
+        return Set.copyOf(fallbackSymbols);
+    }
+
+    /** Refresh the latest candle for every symbol from the active provider. */
+    @Scheduled(fixedRateString = "${stockmonitor.market.refresh-ms:3000}", initialDelay = 3000)
+    void refresh() {
         for (StockMeta meta : UNIVERSE) {
-            List<Candle> candles = candlesBySymbol.get(meta.symbol());
-            Candle last = candles.get(candles.size() - 1);
-            Random rnd = liveRandom.get(meta.symbol());
-            double drift = (rnd.nextGaussian()) * 0.0012;
-            double newClose = round(meta, last.getClose() * Math.exp(drift));
-            long addedVolume = (long) (meta.baseVolume() * 0.001 * (0.5 + rnd.nextDouble()));
-            last.tick(newClose, addedVolume);
+            List<Candle> current = candlesBySymbol.get(meta.symbol());
+            MarketDataProvider active = fallbackSymbols.contains(meta.symbol()) ? simulator : provider;
+            try {
+                List<Candle> updated = active.refresh(meta, current);
+                if (updated != null && !updated.isEmpty()) {
+                    candlesBySymbol.put(meta.symbol(), updated);
+                }
+            } catch (Exception e) {
+                // refresh must never break the schedule; keep last good data
+                log.debug("Refresh failed for {}: {}", meta.symbol(), e.getMessage());
+            }
         }
         lastTickAt = Instant.now();
-    }
-
-    private List<Candle> generateHistory(StockMeta meta) {
-        Random rnd = new Random(meta.symbol().hashCode());
-        List<Candle> candles = new ArrayList<>(HISTORY_DAYS);
-
-        LocalDate date = LocalDate.now();
-        List<LocalDate> tradingDays = new ArrayList<>(HISTORY_DAYS);
-        while (tradingDays.size() < HISTORY_DAYS) {
-            if (date.getDayOfWeek() != DayOfWeek.SATURDAY && date.getDayOfWeek() != DayOfWeek.SUNDAY) {
-                tradingDays.add(date);
-            }
-            date = date.minusDays(1);
-        }
-        java.util.Collections.reverse(tradingDays);
-
-        double price = meta.basePrice() * (0.6 + rnd.nextDouble() * 0.5);
-        int regimeLeft = 0;
-        double drift = 0;
-        double vol = 0.02;
-
-        for (LocalDate day : tradingDays) {
-            if (regimeLeft <= 0) {
-                regimeLeft = 20 + rnd.nextInt(45);
-                int regime = rnd.nextInt(4);
-                switch (regime) {
-                    case 0 -> { drift = 0.0015 + rnd.nextDouble() * 0.003; vol = 0.012 + rnd.nextDouble() * 0.01; }   // bull
-                    case 1 -> { drift = -0.0015 - rnd.nextDouble() * 0.003; vol = 0.014 + rnd.nextDouble() * 0.012; } // bear
-                    case 2 -> { drift = (rnd.nextDouble() - 0.5) * 0.001; vol = 0.006 + rnd.nextDouble() * 0.006; }   // sideways
-                    default -> { drift = (rnd.nextDouble() - 0.5) * 0.004; vol = 0.025 + rnd.nextDouble() * 0.02; }   // volatile
-                }
-            }
-            regimeLeft--;
-
-            double ret = drift + vol * rnd.nextGaussian();
-            double open = round(meta, price * Math.exp(vol * 0.3 * rnd.nextGaussian()));
-            double close = round(meta, price * Math.exp(ret));
-            double span = Math.abs(rnd.nextGaussian()) * vol * 0.7;
-            double high = round(meta, Math.max(open, close) * (1 + span));
-            double low = round(meta, Math.min(open, close) * (1 - span));
-            long volume = (long) (meta.baseVolume() * Math.exp(rnd.nextGaussian() * 0.45) * (1 + 6 * Math.abs(ret)));
-
-            candles.add(new Candle(day, open, high, low, close, volume));
-            price = close;
-        }
-        return candles;
-    }
-
-    private double round(StockMeta meta, double value) {
-        if (meta.basePrice() >= 1000) {
-            return Math.max(1, Math.round(value / 10.0) * 10);
-        }
-        return Math.max(0.01, Math.round(value * 100.0) / 100.0);
     }
 
     public static class UnknownSymbolException extends RuntimeException {

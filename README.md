@@ -40,7 +40,7 @@
 ### 1) 백엔드 (포트 8080)
 ```bash
 cd backend
-gradle bootRun          # 또는 ./gradlew bootRun (wrapper 생성 시)
+gradle bootRun          # 기본: 시뮬레이터 (키 불필요). 실시세 연결은 아래 "데이터 소스" 참고
 ```
 
 ### 2) 프론트엔드 (포트 5173)
@@ -54,11 +54,40 @@ npm run dev
 
 ## 데이터 소스
 
-기본 내장 **시장 시뮬레이터**가 종목별 시드 기반의 일봉 히스토리(420거래일)를 생성하고,
-3초마다 마지막 캔들을 갱신해 실시간 시세를 흉내냅니다(장 마감/휴장 개념 없이 항상 동작).
-실제 시세 연동이 필요하면 `backend/src/main/java/com/stockmonitor/market/MarketDataService.java`를
-실데이터 제공자(한국투자증권 OpenAPI, Yahoo Finance, Alpha Vantage 등)로 교체하면 됩니다 —
-API 계층은 그대로 재사용됩니다.
+데이터 제공자는 `stockmonitor.market.provider` 설정으로 선택합니다. REST/프론트 계층은
+제공자와 무관하게 동일하게 동작합니다 (`MarketDataProvider` 추상화).
+
+| provider | 설명 | 키 필요 |
+|---|---|---|
+| `simulated` (기본값) | 종목별 시드 기반 일봉 히스토리 생성 + 실시간 틱 시뮬레이션. 장 마감/휴장 없이 항상 동작 | 없음 |
+| `kis` | **한국투자증권 OpenAPI** 실시세 (국내 KRX + 미국 NASDAQ) | 앱키/시크릿 |
+
+### 한국투자증권(KIS) 실시세 연결
+
+1. [KIS 개발자센터](https://apiportal.koreainvestment.com)에서 앱키(App Key)·앱시크릿(App Secret)을 발급받습니다.
+   (실계좌 또는 모의투자 계좌 필요)
+2. 환경변수로 주입하고 provider를 `kis`로 지정한 뒤 백엔드를 실행합니다:
+
+```bash
+cd backend
+export MARKET_PROVIDER=kis
+export KIS_APP_KEY=발급받은_앱키
+export KIS_APP_SECRET=발급받은_앱시크릿
+# 모의투자 계좌라면:
+# export KIS_BASE_URL=https://openapivts.koreainvestment.com:29443
+export MARKET_REFRESH_MS=10000   # KIS Rate limit 배려 (권장 10초 이상)
+gradle bootRun
+```
+
+동작 방식:
+- 기동 시 종목별 일봉 히스토리를 KIS 기간별 시세 API로 조회(페이지네이션), 이후 현재가 API로 최신 캔들을 주기적으로 갱신합니다.
+- OAuth 토큰은 발급 후 캐시되어 만료 직전에만 재발급됩니다.
+- **폴백 안전장치**: 앱키가 없거나 특정 종목 조회가 실패하면 해당 종목만 자동으로 시뮬레이터 데이터로 대체되어 앱이 절대 멈추지 않습니다. 대시보드의 "시장 분위기" 배지에 현재 데이터 소스(`한국투자증권 실시간` / `일부 실시간` / `시뮬레이션 데이터`)가 표시됩니다.
+
+> ⚠️ 앱키/시크릿은 절대 코드나 저장소에 커밋하지 마세요. 환경변수로만 주입합니다.
+
+관련 코드: `backend/src/main/java/com/stockmonitor/market/` (provider 추상화),
+`.../market/kis/` (KIS 클라이언트·토큰·매핑).
 
 ## API 요약
 
@@ -70,7 +99,7 @@ API 계층은 그대로 재사용됩니다.
 | `GET /api/stocks/{symbol}/indicators?days=N` | 기술적 지표 시리즈 |
 | `GET /api/stocks/{symbol}/signals` | 매매 시그널 + 종합 점수 |
 | `GET /api/stocks/{symbol}/meme` | 병맛 밈 차트 분석 |
-| `GET /api/market/summary` | 시장 요약 |
+| `GET /api/market/summary` | 시장 요약 + `dataSource`(simulated/kis)·`fallbackSymbols` |
 
 ## 테스트
 

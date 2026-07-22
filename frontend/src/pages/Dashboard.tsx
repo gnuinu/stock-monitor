@@ -13,6 +13,24 @@ function signed(v: number): string {
   return `${v > 0 ? '+' : ''}${v.toFixed(2)}`;
 }
 
+function DataSourceBadge({ summary }: { summary: MarketSummary }) {
+  // KIS with no symbols on fallback = fully live; any fallback or simulated = not live.
+  const live = summary.dataSource === 'kis' && summary.fallbackSymbols.length === 0;
+  const partial = summary.dataSource === 'kis' && summary.fallbackSymbols.length > 0;
+  if (live) {
+    return <span className="source-badge live">한국투자증권 실시간</span>;
+  }
+  if (partial) {
+    const n = summary.fallbackSymbols.length;
+    return (
+      <span className="source-badge partial" title={`시뮬레이션 대체: ${summary.fallbackSymbols.join(', ')}`}>
+        일부 실시간 · {n}종목 대체
+      </span>
+    );
+  }
+  return <span className="source-badge sim">시뮬레이션 데이터</span>;
+}
+
 export default function Dashboard() {
   const [quotes, setQuotes] = useState<Quote[] | null>(null);
   const [summary, setSummary] = useState<MarketSummary | null>(null);
@@ -52,7 +70,9 @@ export default function Dashboard() {
     <>
       <section className="grid-summary">
         <div className="card stat-tile">
-          <div className="label">시장 분위기</div>
+          <div className="label">
+            시장 분위기 <DataSourceBadge summary={summary} />
+          </div>
           <div className="value">
             <span className="up">▲ {summary.advancing}</span>{' '}
             <span className="down">▼ {summary.declining}</span>
