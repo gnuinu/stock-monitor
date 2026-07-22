@@ -67,37 +67,31 @@ npm run dev
 데이터 제공자는 `stockmonitor.market.provider` 설정으로 선택합니다. REST/프론트 계층은
 제공자와 무관하게 동일하게 동작합니다 (`MarketDataProvider` 추상화).
 
-| provider | 설명 | 키 필요 |
+| provider | 설명 | 키/계좌 필요 |
 |---|---|---|
-| `simulated` (기본값) | 종목별 시드 기반 일봉 히스토리 생성 + 실시간 틱 시뮬레이션. 장 마감/휴장 없이 항상 동작 | 없음 |
-| `kis` | **한국투자증권 OpenAPI** 실시세 (국내 KRX + 미국 NASDAQ) | 앱키/시크릿 |
+| `simulated` (기본값) | 종목별 시드 기반 일봉 히스토리 생성 + 실시간 틱 시뮬레이션. 네트워크 없이 항상 동작 | 없음 |
+| `yahoo` | **Yahoo Finance** 실시세 (국내 KRX + 미국). 공개 chart 엔드포인트 사용 | 없음 (키·계좌 불필요) |
 
-### 한국투자증권(KIS) 실시세 연결
+### Yahoo Finance 실시세 연결
 
-1. [KIS 개발자센터](https://apiportal.koreainvestment.com)에서 앱키(App Key)·앱시크릿(App Secret)을 발급받습니다.
-   (실계좌 또는 모의투자 계좌 필요)
-2. 환경변수로 주입하고 provider를 `kis`로 지정한 뒤 백엔드를 실행합니다:
+API 키도 계좌도 필요 없습니다. provider만 `yahoo`로 지정하면 됩니다:
 
 ```bash
 cd backend
-export MARKET_PROVIDER=kis
-export KIS_APP_KEY=발급받은_앱키
-export KIS_APP_SECRET=발급받은_앱시크릿
-# 모의투자 계좌라면:
-# export KIS_BASE_URL=https://openapivts.koreainvestment.com:29443
-export MARKET_REFRESH_MS=10000   # KIS Rate limit 배려 (권장 10초 이상)
+export MARKET_PROVIDER=yahoo
+export MARKET_REFRESH_MS=10000   # 과도한 호출 방지 (권장 10초 이상)
 gradle bootRun
 ```
 
 동작 방식:
-- 기동 시 종목별 일봉 히스토리를 KIS 기간별 시세 API로 조회(페이지네이션), 이후 현재가 API로 최신 캔들을 주기적으로 갱신합니다.
-- OAuth 토큰은 발급 후 캐시되어 만료 직전에만 재발급됩니다.
-- **폴백 안전장치**: 앱키가 없거나 특정 종목 조회가 실패하면 해당 종목만 자동으로 시뮬레이터 데이터로 대체되어 앱이 절대 멈추지 않습니다. 대시보드의 "시장 분위기" 배지에 현재 데이터 소스(`한국투자증권 실시간` / `일부 실시간` / `시뮬레이션 데이터`)가 표시됩니다.
+- 기동 시 종목별 일봉 히스토리를 Yahoo `chart` API(`/v8/finance/chart/{symbol}`)로 조회하고, 이후 최신 캔들을 주기적으로 갱신합니다.
+- 국내 종목은 자동으로 `.KS`(KOSPI)·`.KQ`(KOSDAQ) 접미사를 붙여 조회합니다 (예: `005930.KS`). 미국 종목은 티커 그대로 사용합니다.
+- **폴백 안전장치**: 네트워크 장애나 특정 종목 조회 실패 시 해당 종목만 자동으로 시뮬레이터 데이터로 대체되어 앱이 절대 멈추지 않습니다. 대시보드의 "시장 분위기" 배지에 현재 데이터 소스(`Yahoo Finance 실시간` / `일부 실시간` / `시뮬레이션 데이터`)가 표시됩니다.
 
-> ⚠️ 앱키/시크릿은 절대 코드나 저장소에 커밋하지 마세요. 환경변수로만 주입합니다.
+> Yahoo Finance 공개 엔드포인트는 비공식 API이며, 과도한 호출 시 일시적으로 제한될 수 있습니다. `YAHOO_RANGE`(기본 `1y`), `YAHOO_HISTORY_REFRESH_MS` 등으로 조정할 수 있습니다.
 
 관련 코드: `backend/src/main/java/com/stockmonitor/market/` (provider 추상화),
-`.../market/kis/` (KIS 클라이언트·토큰·매핑).
+`.../market/yahoo/` (Yahoo 클라이언트·매핑). 새 제공자는 `MarketDataProvider`를 구현해 추가하면 됩니다.
 
 ## API 요약
 
@@ -109,7 +103,7 @@ gradle bootRun
 | `GET /api/stocks/{symbol}/indicators?days=N` | 기술적 지표 시리즈 |
 | `GET /api/stocks/{symbol}/signals` | 매매 시그널 + 종합 점수 |
 | `GET /api/stocks/{symbol}/meme` | 병맛 밈 차트 분석 |
-| `GET /api/market/summary` | 시장 요약 + `dataSource`(simulated/kis)·`fallbackSymbols` |
+| `GET /api/market/summary` | 시장 요약 + `dataSource`(simulated/yahoo)·`fallbackSymbols` |
 | `GET /api/portfolio` | 모의투자 계좌(현금·보유종목·손익) |
 | `POST /api/portfolio/orders` | 매수/매도 `{symbol, side: BUY\|SELL, quantity}` |
 | `POST /api/portfolio/reset` | 계좌 초기화 |
