@@ -1,6 +1,8 @@
 # Java / Gradle
 backend/build/
 backend/.gradle/
+backend/application.properties
+backend/out
 *.class
 
 # Node
