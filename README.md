@@ -50,8 +50,10 @@
 ### 1) 백엔드 (포트 8080)
 ```bash
 cd backend
-gradle bootRun          # 기본: 시뮬레이터 (키 불필요). 실시세 연결은 아래 "데이터 소스" 참고
+./gradlew bootRun        # Windows: gradlew.bat bootRun
+# 기본: 시뮬레이터 (키 불필요). 실시세 연결은 아래 "데이터 소스" 참고
 ```
+> Gradle Wrapper(`gradlew`/`gradlew.bat`)가 포함되어 있어 Gradle을 따로 설치하지 않아도 됩니다.
 
 ### 2) 프론트엔드 (포트 5173)
 ```bash
@@ -74,14 +76,46 @@ npm run dev
 
 ### Yahoo Finance 실시세 연결
 
-API 키도 계좌도 필요 없습니다. provider만 `yahoo`로 지정하면 됩니다:
+API 키도 계좌도 필요 없습니다. provider만 `yahoo`로 지정하면 됩니다. 아래 세 방법 중 하나를 쓰세요.
 
+**방법 1) 로컬 설정 파일 (권장 · OS 공통)**
+`backend/application.properties` 파일을 만들고 아래 내용을 넣으면 실행 시 자동 적용됩니다.
+이 파일은 `.gitignore`에 등록되어 커밋되지 않습니다.
+```properties
+stockmonitor.market.provider=yahoo
+stockmonitor.market.refresh-ms=10000
+```
+그다음 그냥 실행:
+```bash
+cd backend
+./gradlew bootRun        # Windows: gradlew.bat bootRun
+```
+
+**방법 2) 환경변수 — macOS / Linux**
 ```bash
 cd backend
 export MARKET_PROVIDER=yahoo
 export MARKET_REFRESH_MS=10000   # 과도한 호출 방지 (권장 10초 이상)
-gradle bootRun
+./gradlew bootRun
 ```
+
+**방법 3) 환경변수 — Windows**
+```bat
+:: 명령 프롬프트(CMD) — 값 끝에 공백/주석을 붙이지 마세요
+cd backend
+set MARKET_PROVIDER=yahoo
+set MARKET_REFRESH_MS=10000
+gradlew.bat bootRun
+```
+```powershell
+# PowerShell
+cd backend
+$env:MARKET_PROVIDER = "yahoo"
+$env:MARKET_REFRESH_MS = "10000"
+.\gradlew.bat bootRun
+```
+> Windows에는 `export`가 없습니다. CMD는 `set`, PowerShell은 `$env:` 를 사용합니다.
+> CMD의 `set VAR=값` 은 **줄 끝 공백과 `#` 주석까지 값에 포함**되므로 같은 줄에 주석을 쓰지 마세요.
 
 동작 방식:
 - 기동 시 종목별 일봉 히스토리를 Yahoo `chart` API(`/v8/finance/chart/{symbol}`)로 조회하고, 이후 최신 캔들을 주기적으로 갱신합니다.
